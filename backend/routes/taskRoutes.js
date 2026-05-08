@@ -1,95 +1,125 @@
 const express = require("express");
 const Task = require("../models/Task");
+const Project = require("../models/Project");
 const protect = require("../middleware/authMiddleware");
-const adminOnly = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
-router.post("/", protect, adminOnly, async (req, res) => {
+// Create task
+router.post("/", protect, async (req, res) => {
   try {
     const { title, description, project, assignedTo, dueDate } = req.body;
 
-    if (!title || !project || !assignedTo || !dueDate) {
-      return res.status(400).json({ message: "Required fields missing" });
+    if (!title || !project || !dueDate) {
+      return res.status(400).json({
+        message: "Title, project, and due date are required",
+      });
+    }
+
+    const existingProject = await Project.findOne({
+      _id: project,
+      $or: [{ admin: req.user.id }, { members: req.user.id }],
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({
+        message: "Project not found or access denied",
+      });
     }
 
     const task = await Task.create({
-      title,
-      description,
+      title: title.trim(),
+      description: description || "",
       project,
-      assignedTo,
+      assignedTo: assignedTo || req.user.id,
       dueDate,
-      createdBy: req.user.id
+      createdBy: req.user.id,
     });
 
-    res.status(201).json(task);
+    const populatedTask = await Task.findById(task._id)
+      .populate("project", "title")
+      .populate("assignedTo", "name email role")
+      .populate("createdBy", "name email role");
+
+    res.status(201).json(populatedTask);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Create task error:", error);
+    res.status(500).json({ message: error.message || "Task creation failed" });
   }
 });
 
+// Get tasks
 router.get("/", protect, async (req, res) => {
   try {
-    let tasks;
-
-    if (req.user.role === "admin") {
-      tasks = await Task.find({ createdBy: req.user.id })
-        .populate("project", "title")
-        .populate("assignedTo", "name email role");
-    } else {
-      tasks = await Task.find({ assignedTo: req.user.id })
-        .populate("project", "title")
-        .populate("assignedTo", "name email role");
-    }
+    const tasks = await Task.find({
+      $or: [{ createdBy: req.user.id }, { assignedTo: req.user.id }],
+    })
+      .populate("project", "title")
+      .populate("assignedTo", "name email role")
+      .populate("createdBy", "name email role")
+      .sort({ createdAt: -1 });
 
     res.json(tasks);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Get tasks error:", error);
+    res.status(500).json({ message: error.message || "Failed to fetch tasks" });
   }
 });
 
+// Update task status/details
 router.put("/:id", protect, async (req, res) => {
   try {
     const { title, description, status, dueDate, assignedTo } = req.body;
 
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({
+      _id: req.params.id,
+      $or: [{ createdBy: req.user.id }, { assignedTo: req.user.id }],
+    });
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({
+        message: "Task not found or access denied",
+      });
     }
 
-    if (req.user.role === "member" && task.assignedTo.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    if (req.user.role === "member") {
-      task.status = status || task.status;
-    } else {
-      task.title = title || task.title;
-      task.description = description || task.description;
-      task.status = status || task.status;
-      task.dueDate = dueDate || task.dueDate;
-      task.assignedTo = assignedTo || task.assignedTo;
-    }
+    if (title) task.title = title;
+    if (description !== undefined) task.description = description;
+    if (status) task.status = status;
+    if (dueDate) task.dueDate = dueDate;
+    if (assignedTo) task.assignedTo = assignedTo;
 
     await task.save();
-    res.json(task);
+
+    const updatedTask = await Task.findById(task._id)
+      .populate("project", "title")
+      .populate("assignedTo", "name email role")
+      .populate("createdBy", "name email role");
+
+    res.json(updatedTask);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Update task error:", error);
+    res.status(500).json({ message: error.message || "Task update failed" });
   }
 });
 
-router.delete("/:id", protect, adminOnly, async (req, res) => {
+// Delete task
+router.delete("/:id", protect, async (req, res) => {
   try {
-    const task = await Task.findByIdAndDelete(req.params.id);
+    const task = await Task.findOneAndDelete({
+      _id: req.params.id,
+      createdBy: req.user.id,
+    });
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found" });
+      return res.status(404).json({
+        message: "Task not found or you are not allowed to delete it",
+      });
     }
 
     res.json({ message: "Task deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Delete task error:", error);
+    res.status(500).json({ message: error.message || "Task delete failed" });
   }
 });
 

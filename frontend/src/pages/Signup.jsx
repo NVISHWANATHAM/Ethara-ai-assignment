@@ -6,22 +6,46 @@ function Signup() {
     name: "",
     email: "",
     password: "",
-    role: "member"
+    role: "member",
   });
 
+  const [loading, setLoading] = useState(false);
+
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value,
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
 
     try {
-      await API.post("/auth/signup", form);
-      alert("Signup successful");
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        role: form.role,
+      };
+
+      const res = await API.post("/auth/signup", payload);
+
+      alert(res.data.message || "Signup successful");
       window.location.href = "/login";
     } catch (error) {
-      alert(error.response?.data?.message || "Signup failed");
+      if (error.response) {
+        alert(error.response.data.message || "Signup failed");
+      } else if (error.request) {
+        alert(
+          "Cannot connect to backend. Check your Railway backend URL and VITE_API_URL."
+        );
+      } else {
+        alert("Signup error: " + error.message);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -31,6 +55,7 @@ function Signup() {
         <img src="/ethara-logo.png" alt="Company Logo" className="auth-logo" />
 
         <h1>Create account</h1>
+
         <p className="muted">
           Build a focused workspace for projects, teams, and task execution.
         </p>
@@ -60,6 +85,7 @@ function Signup() {
             value={form.password}
             onChange={handleChange}
             required
+            minLength="6"
           />
 
           <select name="role" value={form.role} onChange={handleChange}>
@@ -67,8 +93,8 @@ function Signup() {
             <option value="admin">Admin</option>
           </select>
 
-          <button className="btn full-btn" type="submit">
-            Sign up
+          <button className="btn full-btn" type="submit" disabled={loading}>
+            {loading ? "Signing up..." : "Sign up"}
           </button>
         </form>
       </div>

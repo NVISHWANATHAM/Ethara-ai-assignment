@@ -1,51 +1,54 @@
 const express = require("express");
 const Project = require("../models/Project");
 const protect = require("../middleware/authMiddleware");
-const adminOnly = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
-router.post("/", protect, adminOnly, async (req, res) => {
+// Create project
+router.post("/", protect, async (req, res) => {
   try {
-    const { title, description, members } = req.body;
+    const { title, description } = req.body;
 
-    if (!title) {
+    if (!title || title.trim() === "") {
       return res.status(400).json({ message: "Project title is required" });
     }
 
     const project = await Project.create({
-      title,
-      description,
+      title: title.trim(),
+      description: description || "",
       admin: req.user.id,
-      members: members || []
+      members: [req.user.id],
     });
 
-    res.status(201).json(project);
+    const populatedProject = await Project.findById(project._id)
+      .populate("admin", "name email role")
+      .populate("members", "name email role");
+
+    res.status(201).json(populatedProject);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Create project error:", error);
+    res.status(500).json({ message: error.message || "Project creation failed" });
   }
 });
 
+// Get projects
 router.get("/", protect, async (req, res) => {
   try {
-    let projects;
-
-    if (req.user.role === "admin") {
-      projects = await Project.find({ admin: req.user.id })
-        .populate("admin", "name email role")
-        .populate("members", "name email role");
-    } else {
-      projects = await Project.find({ members: req.user.id })
-        .populate("admin", "name email role")
-        .populate("members", "name email role");
-    }
+    const projects = await Project.find({
+      $or: [{ admin: req.user.id }, { members: req.user.id }],
+    })
+      .populate("admin", "name email role")
+      .populate("members", "name email role")
+      .sort({ createdAt: -1 });
 
     res.json(projects);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Get projects error:", error);
+    res.status(500).json({ message: error.message || "Failed to fetch projects" });
   }
 });
 
+// Get single project
 router.get("/:id", protect, async (req, res) => {
   try {
     const project = await Project.findById(req.params.id)
@@ -58,41 +61,59 @@ router.get("/:id", protect, async (req, res) => {
 
     res.json(project);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Get project error:", error);
+    res.status(500).json({ message: error.message || "Failed to fetch project" });
   }
 });
 
-router.put("/:id", protect, adminOnly, async (req, res) => {
+// Update project
+router.put("/:id", protect, async (req, res) => {
   try {
-    const { title, description, members } = req.body;
+    const { title, description } = req.body;
 
-    const project = await Project.findByIdAndUpdate(
-      req.params.id,
-      { title, description, members },
+    const project = await Project.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        admin: req.user.id,
+      },
+      {
+        title,
+        description,
+      },
       { new: true }
     );
 
     if (!project) {
-      return res.status(404).json({ message: "Project not found" });
+      return res.status(404).json({
+        message: "Project not found or you are not allowed to update it",
+      });
     }
 
     res.json(project);
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Update project error:", error);
+    res.status(500).json({ message: error.message || "Project update failed" });
   }
 });
 
-router.delete("/:id", protect, adminOnly, async (req, res) => {
+// Delete project
+router.delete("/:id", protect, async (req, res) => {
   try {
-    const project = await Project.findByIdAndDelete(req.params.id);
+    const project = await Project.findOneAndDelete({
+      _id: req.params.id,
+      admin: req.user.id,
+    });
 
     if (!project) {
-      return res.status(404).json({ message: "Project not found" });
+      return res.status(404).json({
+        message: "Project not found or you are not allowed to delete it",
+      });
     }
 
     res.json({ message: "Project deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Delete project error:", error);
+    res.status(500).json({ message: error.message || "Project delete failed" });
   }
 });
 

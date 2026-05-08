@@ -1,17 +1,22 @@
 const express = require("express");
 const Task = require("../models/Task");
+const Project = require("../models/Project");
 const protect = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
 router.get("/", protect, async (req, res) => {
   try {
-    const filter =
-      req.user.role === "admin"
-        ? { createdBy: req.user.id }
-        : { assignedTo: req.user.id };
+    const taskFilter = {
+      $or: [{ createdBy: req.user.id }, { assignedTo: req.user.id }],
+    };
 
-    const tasks = await Task.find(filter);
+    const projectFilter = {
+      $or: [{ admin: req.user.id }, { members: req.user.id }],
+    };
+
+    const tasks = await Task.find(taskFilter);
+    const projects = await Project.find(projectFilter);
 
     const total = tasks.length;
     const completed = tasks.filter((task) => task.status === "done").length;
@@ -27,10 +32,12 @@ router.get("/", protect, async (req, res) => {
       completed,
       inProgress,
       todo,
-      overdue
+      overdue,
+      projects: projects.length,
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Dashboard error:", error);
+    res.status(500).json({ message: error.message || "Dashboard fetch failed" });
   }
 });
 

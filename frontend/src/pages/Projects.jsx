@@ -7,15 +7,15 @@ function Projects() {
   const [form, setForm] = useState({
     title: "",
     description: "",
-    members: ""
   });
 
   const getProjects = async () => {
     try {
       const res = await API.get("/projects");
-      setProjects(res.data);
+      setProjects(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
-      console.log(error);
+      console.error("Fetch projects error:", error);
+      alert(error.response?.data?.message || "Failed to load projects. Please login again.");
     }
   };
 
@@ -26,19 +26,17 @@ function Projects() {
       await API.post("/projects", {
         title: form.title,
         description: form.description,
-        members: form.members
-          ? form.members.split(",").map((id) => id.trim())
-          : []
       });
 
       setForm({
         title: "",
         description: "",
-        members: ""
       });
 
-      getProjects();
+      await getProjects();
+      alert("Project created successfully");
     } catch (error) {
+      console.error("Create project error:", error);
       alert(error.response?.data?.message || "Project creation failed");
     }
   };
@@ -53,7 +51,7 @@ function Projects() {
         <p className="eyebrow">Project Management</p>
         <h1 className="section-title">Projects</h1>
         <p className="muted">
-          Create focused project spaces without long, messy input columns.
+          Create and manage your team projects.
         </p>
       </div>
 
@@ -73,15 +71,9 @@ function Projects() {
             <textarea
               placeholder="Short description"
               value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              required
-            />
-
-            <input
-              type="text"
-              placeholder="Member IDs, comma separated"
-              value={form.members}
-              onChange={(e) => setForm({ ...form, members: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, description: e.target.value })
+              }
             />
 
             <button className="btn full-btn" type="submit">
@@ -94,7 +86,7 @@ function Projects() {
           {projects.length === 0 ? (
             <div className="empty-card">
               <h3>No projects yet</h3>
-              <p>Create your first workspace project.</p>
+              <p>Create your first project.</p>
             </div>
           ) : (
             projects.map((project) => (
@@ -102,11 +94,13 @@ function Projects() {
                 <span className="badge">Active Project</span>
 
                 <h2>{project.title}</h2>
-                <p className="muted">{project.description}</p>
+                <p className="muted">
+                  {project.description || "No description added."}
+                </p>
 
                 <div className="meta-row">
-                  <span>Team Workspace</span>
-                  <span>Role Based Access</span>
+                  <span>Project ID: {project._id}</span>
+                  <span>Admin: {project.admin?.name || "You"}</span>
                 </div>
               </div>
             ))
