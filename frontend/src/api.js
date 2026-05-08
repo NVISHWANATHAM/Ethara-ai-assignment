@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "enchanting-contentment-production-8bdf.up.railway.app"
+  baseURL: "https://enchanting-contentment-production-8bdf.up.railway.app/api"
 });
 
 API.interceptors.request.use((req) => {
